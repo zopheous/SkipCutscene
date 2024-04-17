@@ -7,10 +7,12 @@ using Dalamud;
 using Dalamud.Game;
 using Dalamud.Game.Command;
 using Dalamud.Game.Gui;
+using Dalamud.Game.Text;
 using Dalamud.IoC;
 using Dalamud.Logging;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
+using FFXIVClientStructs.FFXIV.Client.UI;
 
 namespace Plugins.a08381.SkipCutscene
 {
@@ -21,6 +23,9 @@ namespace Plugins.a08381.SkipCutscene
         private readonly RandomNumberGenerator _csp;
 
         private readonly decimal _base = uint.MaxValue;
+
+        [PluginService] public static IFramework Framework { get; private set; }
+        [PluginService] public static IGameGui GameGui { get; private set; }
 
         [SuppressMessage("ReSharper", "PossibleNullReferenceException")]
         [SuppressMessage("ReSharper", "AssignNullToNotNullAttribute")]
@@ -49,11 +54,7 @@ namespace Plugins.a08381.SkipCutscene
                 return;
             }
             _csp = RandomNumberGenerator.Create();
-
-            CommandManager.AddHandler("/sc", new CommandInfo(OnCommand)
-            {
-                HelpMessage = "/sc: Roll your sanity check dice."
-            });
+            Framework.Update += OnFrameworkUpdate;
         }
 
         public void Dispose()
@@ -63,11 +64,11 @@ namespace Plugins.a08381.SkipCutscene
         }
 
         public string Name => "SkipCutscene";
-        
+
         [PluginService]
         [RequiredVersion("1.0")]
         public static DalamudPluginInterface Interface { get; private set; }
-        
+
         [PluginService]
         [RequiredVersion("1.0")]
         public static ISigScanner SigScanner { get; private set; }
@@ -75,7 +76,7 @@ namespace Plugins.a08381.SkipCutscene
         [PluginService]
         [RequiredVersion("1.0")]
         public static ICommandManager CommandManager { get; private set; }
-        
+
         [PluginService]
         [RequiredVersion("1.0")]
         public static IChatGui ChatGui { get; private set; }
@@ -101,18 +102,30 @@ namespace Plugins.a08381.SkipCutscene
             }
         }
 
-        private void OnCommand(string command, string arguments)
+        private bool allReady = true;
+        private unsafe void OnFrameworkUpdate(IFramework framework)
         {
-            if (command.ToLower() != "/sc") return;
-            byte[] rndSeries = new byte[4];
-            _csp.GetBytes(rndSeries);
-            int rnd = (int)Math.Abs(BitConverter.ToUInt32(rndSeries, 0) / _base * 50 + 1);
-            ChatGui.Print(_config.IsEnabled
-                ? $"sancheck: 1d100={rnd + 50}, Failed"
-                : $"sancheck: 1d100={rnd}, Passed");
-            _config.IsEnabled = !_config.IsEnabled;
-            SetEnabled(_config.IsEnabled);
-            Interface.SavePluginConfig(_config);
+            var partyListPtr = GameGui.GetAddonByName("_PartyList");
+            if (partyListPtr != IntPtr.Zero)
+            {
+                var partyList = (AddonPartyList*)partyListPtr;
+                var allReady = !(
+                    partyList->PartyMember.PartyMember0.Name->NodeText.ToString().Contains("Viewing Cutscene") ||
+                    partyList->PartyMember.PartyMember1.Name->NodeText.ToString().Contains("Viewing Cutscene") ||
+                    partyList->PartyMember.PartyMember2.Name->NodeText.ToString().Contains("Viewing Cutscene") ||
+                    partyList->PartyMember.PartyMember3.Name->NodeText.ToString().Contains("Viewing Cutscene")
+                );
+                if (allReady && !this.allReady)
+                {
+                    ChatGui.Print(new()
+                    {
+                        Type = XivChatType.TellIncoming,
+                        Name = "[Skip Cutscene]",
+                        Message = "Party ready!"
+                    });
+                }
+                this.allReady = allReady;
+            }
         }
     }
 
