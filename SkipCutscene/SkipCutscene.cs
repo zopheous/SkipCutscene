@@ -121,10 +121,11 @@ namespace Plugins.a08381.SkipCutscene
                 {
                     ChatGui.Print(new()
                     {
-                        Type = XivChatType.TellIncoming,
+                        Type = XivChatType.Echo,
                         Name = "[Skip Cutscene]",
-                        Message = "Party ready!"
+                        Message = "[Skip Cutscene] Party ready!"
                     });
+                    UIModule.PlayChatSoundEffect(7);
                 }
                 this.viewingCutscene = viewingCutscene;
             }
